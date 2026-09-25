@@ -1,0 +1,6 @@
+.env
+vocab.txt
+__pycache__/
+out/
+jobs/
+tmp/

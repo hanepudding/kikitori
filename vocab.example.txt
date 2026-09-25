@@ -1,0 +1,7 @@
+# Vocabulary: one term per line, anything after # is a comment.
+# Terms stay in the language they are spoken in; they bias recognition toward exactly these spellings.
+# Names are what ASR misspells most, so they pay off most.
+# The longer the list, the more likely the model writes terms that were never said. Keep only what recordings actually mention.
+
+llama.cpp
+Qwen3-ASR

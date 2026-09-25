@@ -1,0 +1,30 @@
+[project]
+name = "kikitori"
+version = "0.1.0"
+description = "Long recordings to speaker-labelled, timestamped transcripts, with Qwen3-ASR served by llama-server"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+# Unpinned: the machine decides the versions
+dependencies = [
+    "torch",
+    "torchaudio",
+    "transformers",
+    "accelerate",
+    "numpy",
+    "soundfile",
+    "silero-vad",
+    "httpx",
+    "pyannote.audio",
+]
+
+[project.optional-dependencies]
+# run.py and serve.py; code that imports kikitori as a library needs none of these
+app = ["python-dotenv", "fastapi", "uvicorn", "python-multipart"]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""

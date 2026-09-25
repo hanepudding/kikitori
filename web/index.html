@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kikitori</title>
+<style>
+  :root {
+    --bg: #fafaf9; --panel: #ffffff; --text: #1c1917; --muted: #78716c; --line: #e7e5e4;
+    --accent: #2563eb; --accent-text: #ffffff; --error: #b91c1c; --hover: #f5f5f4; --now: #eff6ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1917; --panel: #262322; --text: #e7e5e4; --muted: #a8a29e; --line: #3a3634;
+      --accent: #60a5fa; --accent-text: #0c0a09; --error: #f87171; --hover: #2f2b29; --now: #1e2a3d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 20px;
+         grid-template-columns: 320px 1fr; align-items: start; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-top: 10px; }
+  input[type=text], input[type=number], textarea {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--text); font: inherit; }
+  textarea { resize: vertical; min-height: 60px; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #drop { border: 2px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center;
+          color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
+  #drop.over { border-color: var(--accent); color: var(--text); }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  #progress { font-size: 13px; color: var(--muted); }
+  #jobs { list-style: none; margin: 0; padding: 0; }
+  #jobs li { padding: 8px; border-radius: 6px; cursor: pointer; }
+  #jobs li:hover { background: var(--hover); }
+  #jobs li.active { background: var(--now); }
+  .name { overflow-wrap: anywhere; }
+  .meta { font-size: 12px; color: var(--muted); }
+  .error { color: var(--error); }
+  #empty { color: var(--muted); }
+  audio { width: 100%; margin: 8px 0; }
+  #speakers { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
+  .chip { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  #segments { margin-top: 12px; }
+  .seg { display: grid; grid-template-columns: 90px 1fr; gap: 10px; padding: 4px 6px; border-radius: 6px; }
+  .seg.now { background: var(--now); }
+  .seg .t { font: 12px/1.9 ui-monospace, monospace; color: var(--accent); cursor: pointer; }
+  .seg .who { font-size: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <section>
+      <h1>Kikitori</h1>
+      <form id="form">
+        <div id="drop">Drop an audio or video file here, or click to choose</div>
+        <input id="file" type="file" hidden>
+        <details>
+          <summary>Options</summary>
+          <label>Language <input id="language" type="text" list="languages"></label>
+          <datalist id="languages"><option>Chinese</option><option>English</option><option>Japanese</option></datalist>
+          <label>Number of speakers (blank: let pyannote count) <input id="num_speakers" type="number" min="1"></label>
+          <label>Background <textarea id="background"></textarea></label>
+          <label>Vocabulary, one term per line <textarea id="vocab" rows="6"></textarea></label>
+          <div id="nodiarize" class="meta" hidden>Diarization is off in .env: transcripts carry no speakers.</div>
+        </details>
+        <div class="row">
+          <button class="primary" id="submit" disabled>Transcribe</button>
+          <span id="progress"></span>
+        </div>
+      </form>
+    </section>
+    <section style="margin-top: 20px">
+      <h2>Jobs</h2>
+      <ul id="jobs"></ul>
+    </section>
+  </div>
+  <section id="detail">
+    <div id="empty">Pick a job on the left.</div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let chosen = null, current = null, poller = null;
+
+function fmt(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = Math.floor(sec % 60);
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+}
+function color(label, labels) {
+  return `hsl(${Math.round(labels.indexOf(label) * 360 / Math.max(labels.length, 1) + 210) % 360} 65% 50%)`;
+}
+function el(tag, props = {}, ...children) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...children);
+  return e;
+}
+
+async function loadDefaults() {
+  const d = await (await fetch("/api/defaults")).json();
+  $("language").value = d.language;
+  $("background").value = d.background;
+  $("vocab").value = d.vocab;
+  $("nodiarize").hidden = d.diarize;
+}
+
+function choose(file) {
+  chosen = file;
+  $("drop").textContent = file ? file.name : "Drop an audio or video file here, or click to choose";
+  $("submit").disabled = !file;
+}
+$("drop").onclick = () => $("file").click();
+$("file").onchange = () => choose($("file").files[0]);
+$("drop").ondragover = (e) => { e.preventDefault(); $("drop").classList.add("over"); };
+$("drop").ondragleave = () => $("drop").classList.remove("over");
+$("drop").ondrop = (e) => { e.preventDefault(); $("drop").classList.remove("over"); choose(e.dataTransfer.files[0]); };
+
+$("form").onsubmit = (e) => {
+  e.preventDefault();
+  const body = new FormData();
+  body.append("file", chosen);
+  for (const k of ["language", "background", "vocab", "num_speakers"]) body.append(k, $(k).value);
+  // XHR rather than fetch: fetch reports no upload progress, and recordings run to hundreds of MB
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/jobs");
+  xhr.upload.onprogress = (p) => { $("progress").textContent = `Uploading ${Math.round(p.loaded / p.total * 100)}%`; };
+  xhr.onload = () => {
+    if (xhr.status !== 200) { $("progress").textContent = `Upload failed: ${xhr.status} ${xhr.responseText}`; return; }
+    $("progress").textContent = "";
+    choose(null);
+    const job = JSON.parse(xhr.responseText);
+    refresh().then(() => open(job.id));
+  };
+  xhr.onerror = () => { $("progress").textContent = "Upload failed: server unreachable"; };
+  $("submit").disabled = true;
+  xhr.send(body);
+};
+
+function status(job) {
+  if (job.status === "running") return `running ${fmt(Date.now() / 1000 - job.started)}`;
+  if (job.status === "done") return `done in ${fmt(job.finished - job.started)}`;
+  return job.status;
+}
+
+async function refresh() {
+  const list = await (await fetch("/api/jobs")).json();
+  $("jobs").replaceChildren(...list.map((job) => {
+    const li = el("li", {}, el("div", { className: "name", textContent: job.filename }),
+      el("div", { className: "meta" + (job.status === "error" ? " error" : ""),
+        textContent: `${new Date(job.created * 1000).toLocaleString()} · ${status(job)}` }));
+    li.classList.toggle("active", current && current.id === job.id);
+    li.onclick = () => open(job.id);
+    return li;
+  }));
+  const busy = list.some((j) => j.status === "queued" || j.status === "running");
+  if (current && current.status !== "done" && current.status !== "error") {
+    const now = list.find((j) => j.id === current.id);
+    if (now && now.status !== current.status) open(current.id);
+  }
+  clearTimeout(poller);
+  if (busy) poller = setTimeout(refresh, 2000);
+}
+
+async function open(id) {
+  current = await (await fetch(`/api/jobs/${id}`)).json();
+  refresh();
+  const d = $("detail");
+  const head = el("h1", { className: "name", textContent: current.filename });
+  if (current.status !== "done") {
+    const note = current.status === "error"
+      ? el("pre", { className: "error", textContent: current.error, style: "white-space: pre-wrap" })
+      : el("div", { className: "meta", textContent: `${current.status}. This page updates by itself.` });
+    d.replaceChildren(head, note);
+    return;
+  }
+  const segs = current.segments;
+  const labels = [...new Set(segs.map((s) => s.speaker).filter(Boolean))].sort();
+  const player = el("audio", { controls: true, preload: "metadata", src: `/api/jobs/${id}/audio` });
+
+  const inputs = {};
+  const speakers = el("div", { id: "speakers" });
+  for (const label of labels) {
+    inputs[label] = el("input", { type: "text", value: current.names[label] || "", placeholder: label });
+    speakers.append(el("span", {}, el("span", { className: "chip", style: `background: ${color(label, labels)}` }), label),
+      inputs[label]);
+  }
+  const saveBtn = el("button", { textContent: "Save names" });
+  saveBtn.onclick = async () => {
+    const names = Object.fromEntries(labels.map((l) => [l, inputs[l].value]));
+    const r = await fetch(`/api/jobs/${id}/names`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(names) });
+    current.names = (await r.json()).names;
+    paint();
+  };
+  const dl = el("a", { href: `/api/jobs/${id}/transcript.txt` }, el("button", { className: "primary", textContent: "Download .txt" }));
+
+  const list = el("div", { id: "segments" });
+  const rows = segs.map((s) => {
+    const t = el("div", { className: "t", textContent: fmt(s.start), title: "Play from here" });
+    t.onclick = () => { player.currentTime = s.start; player.play(); };
+    const who = el("div", { className: "who" });
+    const row = el("div", { className: "seg" }, t, el("div", {}, who, el("div", { textContent: s.text })));
+    return { s, row, who };
+  });
+  function paint() {
+    for (const { s, who } of rows) {
+      who.textContent = s.speaker ? (current.names[s.speaker] || s.speaker) : "";
+      who.style.color = s.speaker ? color(s.speaker, labels) : "";
+    }
+  }
+  paint();
+  list.append(...rows.map((r) => r.row));
+  player.ontimeupdate = () => {
+    const t = player.currentTime;
+    for (const { s, row } of rows) row.classList.toggle("now", s.start <= t && t < s.end);
+  };
+
+  const children = [head, player];
+  if (labels.length) children.push(el("h2", { textContent: "Speakers", style: "margin-top: 12px" }), speakers);
+  children.push(el("div", { className: "row" }, ...(labels.length ? [saveBtn] : []), dl), list);
+  d.replaceChildren(...children);
+}
+
+loadDefaults();
+refresh();
+</script>
+</body>
+</html>
