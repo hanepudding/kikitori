@@ -1,6 +1,7 @@
 """Local web page: upload a recording, read and download the transcript, name the speakers.
 Edit .env, then run: python serve.py"""
 import json
+import multiprocessing
 import queue
 import shutil
 import subprocess
@@ -30,11 +31,15 @@ if log_file := get("SERVE_LOG_FILE"):
 JOBS_DIR = resolve(get("SERVE_JOBS_DIR", "jobs"))
 HF_TOKEN = hf_token()
 AUDIO = "audio.m4a"
+PROCESSES = multiprocessing.get_context("spawn")
 
 app = FastAPI()
 jobs: dict[str, dict] = {}
 lock = threading.Lock()
 pending: queue.Queue[str] = queue.Queue()
+# The process of the job being transcribed, and the jobs asked to stop
+running: dict[str, multiprocessing.Process] = {}
+stopping: set[str] = set()
 
 
 def job_dir(job_id: str) -> Path:
@@ -75,6 +80,17 @@ def to_m4a(source: Path, dest: Path) -> None:
     )
 
 
+def run_job(source: Path, options: dict, segments_path: Path, result) -> None:
+    """The transcription, in a process of its own: stopping a job is ending that process."""
+    try:
+        segments = transcribe(source, **options)
+        segments_path.write_text(json.dumps([asdict(s) for s in segments], ensure_ascii=False), encoding="utf-8")
+        result.send(None)
+    except Exception as e:
+        traceback.print_exc()
+        result.send(f"{type(e).__name__}: {e}")
+
+
 def worker() -> None:
     # One job at a time: the aligner and pyannote share the GPU with llama-server
     while True:
@@ -88,20 +104,40 @@ def worker() -> None:
             save(job)
         d = job_dir(job_id)
         source, vocab = d / job["source"], d / "vocab.txt"
+        options = dict(
+            language=job["language"],
+            vocab_files=[vocab] if vocab.exists() else [],
+            background=job["background"],
+            hf_token=HF_TOKEN,
+            num_speakers=job["num_speakers"],
+            **pipeline_options(),
+        )
         try:
-            segments = transcribe(
-                source,
-                language=job["language"],
-                vocab_files=[vocab] if vocab.exists() else [],
-                background=job["background"],
-                hf_token=HF_TOKEN,
-                num_speakers=job["num_speakers"],
-                **pipeline_options(),
-            )
-            to_m4a(source, d / AUDIO)
-            (d / "segments.json").write_text(
-                json.dumps([asdict(s) for s in segments], ensure_ascii=False), encoding="utf-8")
-            update(job_id, status="done", finished=time.time())
+            receive, send = PROCESSES.Pipe(duplex=False)
+            proc = PROCESSES.Process(target=run_job, args=(source, options, d / "segments.json", send))
+            proc.start()
+            send.close()
+            with lock:
+                running[job_id] = proc
+            proc.join()
+            with lock:
+                del running[job_id]
+                stopped = job_id in stopping
+                stopping.discard(job_id)
+            if stopped:
+                update(job_id, status="stopped", finished=time.time())
+                continue
+            try:
+                # None when the job succeeded
+                error = receive.recv()
+            except (EOFError, OSError):
+                # The process ended without reporting: killed from outside, or a crash in native code
+                error = f"the job's process exited with code {proc.exitcode}"
+            if error:
+                update(job_id, status="error", finished=time.time(), error=error)
+            else:
+                to_m4a(source, d / AUDIO)
+                update(job_id, status="done", finished=time.time())
         except Exception as e:
             # The page is the only place a failed job is visible; keep the server up for the next one
             traceback.print_exc()
@@ -202,6 +238,17 @@ def audio(job_id: str):
     if not path.exists():
         raise HTTPException(404, f"job {job_id} has no audio")
     return FileResponse(path, media_type="audio/mp4")
+
+
+@app.post("/api/jobs/{job_id}/stop")
+def stop_job(job_id: str):
+    with lock:
+        proc = running.get(job_id)
+        if proc is None:
+            raise HTTPException(409, f"job {job_id} is not running")
+        stopping.add(job_id)
+    proc.terminate()
+    return {"stopping": job_id}
 
 
 @app.delete("/api/jobs/{job_id}")

@@ -61,11 +61,14 @@ a time. Language, number of speakers, background and vocabulary can be set per u
 finished transcript, a click on a timestamp plays the audio from there, the speaker fields rename the speakers, and
 the download is the `.txt` with those names in it.
 
+Each job runs in a process of its own. Stop on the page, or `POST /api/jobs/<id>/stop`, ends that process at once and
+frees the GPU memory it held; the server goes on with the next job in the queue.
+
 Each job is a directory under `SERVE_JOBS_DIR`, and the job list is those directories. The upload waits there
-until its job ends, whether done or failed, and is then removed; what stays is `job.json`, `segments.json` and
-`audio.m4a`, a 48 kbps copy for the player at about 20 MB an hour. Delete on the page, or
-`DELETE /api/jobs/<id>`, removes a job with its directory; a running job cannot be deleted. A job the server was
-working on when it stopped starts over on the next launch.
+until its job ends, whether done, failed or stopped, and is then removed; what stays is `job.json`,
+`segments.json` and `audio.m4a`, a 48 kbps copy for the player at about 20 MB an hour. Delete on the page, or
+`DELETE /api/jobs/<id>`, removes a job with its directory; a running job has to be stopped first. A job the server
+was working on when the server itself stopped starts over on the next launch.
 
 The server has no authentication. It binds `127.0.0.1`; set `SERVE_HOST=0.0.0.0` only on a network you trust.
 The page requests everything by relative path, so a reverse proxy can mount it under a sub-path such as

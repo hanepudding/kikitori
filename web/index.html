@@ -184,6 +184,16 @@ function deleteButton(id) {
   return b;
 }
 
+function stopButton(id) {
+  const b = el("button", { textContent: "Stop" });
+  b.onclick = async () => {
+    b.disabled = true;
+    const r = await fetch(`api/jobs/${id}/stop`, { method: "POST" });
+    if (!r.ok) { alert(await r.text()); b.disabled = false; }
+  };
+  return b;
+}
+
 async function open(id) {
   current = await (await fetch(`api/jobs/${id}`)).json();
   refresh();
@@ -194,7 +204,7 @@ async function open(id) {
       ? el("pre", { className: "error", textContent: current.error, style: "white-space: pre-wrap" })
       : el("div", { className: "meta", textContent: `${current.status}. This page updates by itself.` });
     d.replaceChildren(head, note);
-    if (current.status !== "running") d.append(el("div", { className: "row" }, deleteButton(id)));
+    d.append(el("div", { className: "row" }, current.status === "running" ? stopButton(id) : deleteButton(id)));
     return;
   }
   const segs = current.segments;
