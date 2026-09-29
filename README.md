@@ -61,8 +61,10 @@ a time. Language, number of speakers, background and vocabulary can be set per u
 finished transcript, a click on a timestamp plays the audio from there, the speaker fields rename the speakers, and
 the download is the `.txt` with those names in it.
 
-Each upload is a directory under `SERVE_JOBS_DIR`: the source file, its 16 kHz wav, `segments.json` and `job.json`.
-Nothing is deleted automatically; to remove a job, stop the server and delete its directory. A job the server was
+Each job is a directory under `SERVE_JOBS_DIR`, and the job list is those directories. The upload waits there
+until its job ends, whether done or failed, and is then removed; what stays is `job.json`, `segments.json` and
+`audio.m4a`, a 48 kbps copy for the player at about 20 MB an hour. Delete on the page, or
+`DELETE /api/jobs/<id>`, removes a job with its directory; a running job cannot be deleted. A job the server was
 working on when it stopped starts over on the next launch.
 
 The server has no authentication. It binds `127.0.0.1`; set `SERVE_HOST=0.0.0.0` only on a network you trust.

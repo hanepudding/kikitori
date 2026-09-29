@@ -171,6 +171,19 @@ async function refresh() {
   if (busy) poller = setTimeout(refresh, 2000);
 }
 
+function deleteButton(id) {
+  const b = el("button", { textContent: "Delete" });
+  b.onclick = async () => {
+    if (!confirm("Delete this job and its transcript?")) return;
+    const r = await fetch(`api/jobs/${id}`, { method: "DELETE" });
+    if (!r.ok) { alert(await r.text()); return; }
+    current = null;
+    $("detail").replaceChildren(el("div", { id: "empty", textContent: "Pick a job on the left." }));
+    refresh();
+  };
+  return b;
+}
+
 async function open(id) {
   current = await (await fetch(`api/jobs/${id}`)).json();
   refresh();
@@ -181,6 +194,7 @@ async function open(id) {
       ? el("pre", { className: "error", textContent: current.error, style: "white-space: pre-wrap" })
       : el("div", { className: "meta", textContent: `${current.status}. This page updates by itself.` });
     d.replaceChildren(head, note);
+    if (current.status !== "running") d.append(el("div", { className: "row" }, deleteButton(id)));
     return;
   }
   const segs = current.segments;
@@ -227,7 +241,7 @@ async function open(id) {
 
   const children = [head, player];
   if (labels.length) children.push(el("h2", { textContent: "Speakers", style: "margin-top: 12px" }), speakers);
-  children.push(el("div", { className: "row" }, ...(labels.length ? [saveBtn] : []), dl), list);
+  children.push(el("div", { className: "row" }, ...(labels.length ? [saveBtn] : []), dl, deleteButton(id)), list);
   d.replaceChildren(...children);
 }
 
