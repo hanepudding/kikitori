@@ -69,6 +69,21 @@ The server has no authentication. It binds `127.0.0.1`; set `SERVE_HOST=0.0.0.0`
 The page requests everything by relative path, so a reverse proxy can mount it under a sub-path such as
 `/kikitori/`, trailing slash included.
 
+### In the background
+
+On Windows, `windows/kikitori.ps1` registers `serve.py` as the scheduled task `kikitori`, started at logon and every
+hour, with output to `~\.local\state\kikitori\serve.log`. Run it once from a PowerShell that is not elevated: the
+interpreter it records is whatever `python` resolves to there, and uv's interpreter links do not resolve in an
+elevated shell. `Start-ScheduledTask` and `Stop-ScheduledTask` control it; to keep it off for a while, disable the
+task, since the hourly trigger restarts an ended one. With `SERVE_HOST=0.0.0.0`, other machines also need an inbound
+firewall rule for `SERVE_PORT`; a process without a desktop never raises the allow prompt, so its packets are
+dropped silently.
+
+On macOS, put your interpreter, this directory and the log path into `launchd/local.kikitori.plist`, copy it to
+`~/Library/LaunchAgents/`, then `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/local.kikitori.plist`. launchd
+runs it at login and whenever it exits. Reload with `launchctl kickstart -k gui/$UID/local.kikitori` after editing
+`.env` or the plist.
+
 ### run.py
 
 Set `ASR_SOURCE` in `.env` and run `python run.py`. The transcript goes to `ASR_OUT_DIR` as `<folder>_<stem>.txt`:
@@ -116,6 +131,7 @@ kikitori/pipeline.py   chains all of the above into transcribe() and transcribe_
 run.py                 transcribes one file, configured through .env
 serve.py, web/         the web page
 settings.py            reads .env for run.py and serve.py
+windows/, launchd/     serve.py as a background service
 ```
 
 ### Chunks and speakers
