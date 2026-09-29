@@ -28,8 +28,9 @@ def flag(key: str, default: bool) -> bool:
 
 
 def resolve(value: str) -> Path:
-    """Relative paths in .env are relative to the project, not to the shell's cwd."""
-    return Path(value) if Path(value).is_absolute() else HERE / value
+    """Relative paths in .env are relative to the project, not to the shell's cwd; ~ is expanded."""
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else HERE / path
 
 
 def server_url() -> str:
