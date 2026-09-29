@@ -66,6 +66,8 @@ Nothing is deleted automatically; to remove a job, stop the server and delete it
 working on when it stopped starts over on the next launch.
 
 The server has no authentication. It binds `127.0.0.1`; set `SERVE_HOST=0.0.0.0` only on a network you trust.
+The page requests everything by relative path, so a reverse proxy can mount it under a sub-path such as
+`/kikitori/`, trailing slash included.
 
 ### run.py
 
