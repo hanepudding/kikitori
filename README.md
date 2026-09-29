@@ -102,8 +102,8 @@ from kikitori import transcribe, transcribe_file
 transcribe_file("call.mp4", "out", "call", vocab_files=["vocab.txt"], hf_token="hf_...",
                 server="http://127.0.0.1:8080")
 
-# list[Segment], each with start, end, text and speaker
-segments = transcribe("call.mp4", "work", hf_token=None)
+# list[Segment], each with start, end, text and speaker; nothing is written to disk
+segments = transcribe("call.mp4", hf_token=None)
 ```
 
 ### Output

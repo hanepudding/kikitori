@@ -9,8 +9,6 @@ from .types import Segment
 
 def transcribe(
     source: str | Path,
-    work_dir: str | Path,
-    name: str | None = None,
     language: str = "Chinese",
     vocab_files: list[str | Path] = [],
     background: str = "",
@@ -23,23 +21,14 @@ def transcribe(
     batch_size: int = 8,
     server: str = SERVER,
 ) -> list[Segment]:
-    """Transcribe one media file into segments.
-
-    The decoded 16 kHz wav is cached in work_dir as <name>_16k.wav.
+    """Transcribe one media file into segments. Nothing is written to disk.
 
     hf_token None means no speaker diarization: lines still break at sentence
     ends, they just carry no speaker.
-
-    name overrides the artifact stem. The default folds the source's folder into
-    it, because stems repeat across the corpus; pass one when the caller already
-    gives every run its own directory.
     """
-    name = name or audio.run_key(source)
-
     print("=== ffmpeg ===")
-    wav = audio.to_wav16k(source, work_dir, name)
-    samples = audio.load(wav)
-    print(f"{wav.name}  {len(samples) / audio.SAMPLE_RATE / 60:.1f} min")
+    samples = audio.decode(source)
+    print(f"{Path(source).name}  {len(samples) / audio.SAMPLE_RATE / 60:.1f} min")
 
     turns = []
     if hf_token:
@@ -96,13 +85,16 @@ def transcribe_file(
 ) -> Path:
     """Transcribe one media file into out_dir/<name>.txt and return that path.
 
-    options are transcribe()'s keyword arguments; the wav cache goes to out_dir too.
+    name defaults to the source's folder and stem, because stems repeat across
+    the corpus; pass one when the caller already gives every run its own
+    directory. options are transcribe()'s keyword arguments.
     """
     out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     name = name or audio.run_key(source)
     out_path = out_dir / (name + ".txt")
 
-    segments = transcribe(source, out_dir, name, **options)
+    segments = transcribe(source, **options)
     if speaker_names:
         segments = output.rename_speakers(segments, speaker_names)
     output.write(segments, out_path)
