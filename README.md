@@ -74,10 +74,10 @@ The page requests everything by relative path, so a reverse proxy can mount it u
 ### In the background
 
 On Windows, `windows/kikitori.ps1` registers `serve.py` as the scheduled task `kikitori`, started at logon and every
-hour, with output to `~\.local\state\kikitori\serve.log`. Run it once from a PowerShell that is not elevated: the
-interpreter it records is whatever `python` resolves to there, and uv's interpreter links do not resolve in an
-elevated shell. `Start-ScheduledTask` and `Stop-ScheduledTask` control it; to keep it off for a while, disable the
-task, since the hourly trigger restarts an ended one. With `SERVE_HOST=0.0.0.0`, other machines also need an inbound
+hour. A task has no console, so set `SERVE_LOG_FILE` in `.env` first. Run the script once from a PowerShell that is
+not elevated: the interpreter it records is whatever `python` resolves to there, and uv's interpreter links do not
+resolve in an elevated shell. `Start-ScheduledTask` and `Stop-ScheduledTask` control it; to keep it off for a while,
+disable the task, since the hourly trigger restarts an ended one. With `SERVE_HOST=0.0.0.0`, other machines also need an inbound
 firewall rule for `SERVE_PORT`; a process without a desktop never raises the allow prompt, so its packets are
 dropped silently.
 

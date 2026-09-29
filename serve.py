@@ -4,6 +4,7 @@ import json
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -18,6 +19,13 @@ from fastapi.responses import FileResponse, PlainTextResponse
 
 from kikitori import Segment, output, transcribe
 from settings import HERE, get, hf_token, pipeline_options, resolve, vocab_files
+
+# At import, so a job's process, which imports this module afresh, writes to the same log
+if log_file := get("SERVE_LOG_FILE"):
+    log = resolve(log_file)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    # UTF-8 whatever the code page: a traceback that cannot be encoded kills the thread printing it
+    sys.stdout = sys.stderr = open(log, "a", encoding="utf-8", buffering=1)
 
 JOBS_DIR = resolve(get("SERVE_JOBS_DIR", "jobs"))
 HF_TOKEN = hf_token()
