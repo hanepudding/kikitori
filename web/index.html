@@ -212,21 +212,23 @@ async function open(id) {
   const player = el("audio", { controls: true, preload: "metadata", src: `api/jobs/${id}/audio` });
 
   const inputs = {};
+  let saving = Promise.resolve();
+  // change fires when a field loses focus after an edit, or on Enter
+  const save = () => {
+    const names = Object.fromEntries(labels.map((l) => [l, inputs[l].value]));
+    saving = fetch(`api/jobs/${id}/names`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(names) })
+      .then((r) => r.json()).then((job) => { current.names = job.names; paint(); });
+  };
   const speakers = el("div", { id: "speakers" });
   for (const label of labels) {
-    inputs[label] = el("input", { type: "text", value: current.names[label] || "", placeholder: label });
+    inputs[label] = el("input", { type: "text", value: current.names[label] || "", placeholder: label, onchange: save });
     speakers.append(el("span", {}, el("span", { className: "chip", style: `background: ${color(label, labels)}` }), label),
       inputs[label]);
   }
-  const saveBtn = el("button", { textContent: "Save names" });
-  saveBtn.onclick = async () => {
-    const names = Object.fromEntries(labels.map((l) => [l, inputs[l].value]));
-    const r = await fetch(`api/jobs/${id}/names`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(names) });
-    current.names = (await r.json()).names;
-    paint();
-  };
-  const dl = el("a", { href: `api/jobs/${id}/transcript.txt` }, el("button", { className: "primary", textContent: "Download .txt" }));
+  const dl = el("button", { className: "primary", textContent: "Download .txt" });
+  // Clicking here takes the focus from a field just edited; its save has to land before the download is built
+  dl.onclick = async () => { await saving; location.href = `api/jobs/${id}/transcript.txt`; };
 
   const list = el("div", { id: "segments" });
   const rows = segs.map((s) => {
@@ -251,7 +253,7 @@ async function open(id) {
 
   const children = [head, player];
   if (labels.length) children.push(el("h2", { textContent: "Speakers", style: "margin-top: 12px" }), speakers);
-  children.push(el("div", { className: "row" }, ...(labels.length ? [saveBtn] : []), dl, deleteButton(id)), list);
+  children.push(el("div", { className: "row" }, dl, deleteButton(id)), list);
   d.replaceChildren(...children);
 }
 
